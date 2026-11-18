@@ -1,0 +1,10 @@
+{
+  "project": "layered-project",
+  "checks": [
+    {
+      "id": "layers/domain-independence",
+      "version": "1.0.0",
+      "module": "domain-dependencies.cjs"
+    }
+  ]
+}
