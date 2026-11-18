@@ -16,13 +16,12 @@ npm ci
 npm test
 ```
 
-Configure your MCP client to launch the server with the example project first.
-Use absolute paths on your machine:
+Configure your MCP client to launch the server. Use an absolute path to the entry point:
 
 ```toml
 [mcp_servers.architecture-check]
 command = "node"
-args = ["/path/to/architecture-check-mcp/src/mcp-server.js", "--root", "/path/to/architecture-check-mcp/examples/layered-project"]
+args = ["/path/to/architecture-check-mcp/src/mcp-server.js"]
 ```
 
 For clients that accept an `mcpServers` JSON object:
@@ -33,21 +32,20 @@ For clients that accept an `mcpServers` JSON object:
     "architecture-check": {
       "command": "node",
       "args": [
-        "/path/to/architecture-check-mcp/src/mcp-server.js",
-        "--root",
-        "/path/to/architecture-check-mcp/examples/layered-project"
+        "/path/to/architecture-check-mcp/src/mcp-server.js"
       ]
     }
   }
 }
 ```
 
-In meta-agent, use a custom stdio entry with
-`id`, `command` and `args` in `space.json`. The `--root` argument binds one
-server instance to one checkout. Use distinct instance names for multiple
-projects.
+Restart the MCP client and call `architecture_check`:
 
-Restart the MCP client and call `architecture_check` with `{}`. The example
+```json
+{"project_path":"/path/to/architecture-check-mcp/examples/layered-project"}
+```
+
+The same server can check another project on the next call. The example
 should return `pass`. To see a finding, add
 `"dependencies": { "@example/infrastructure": "*" }` to
 `examples/layered-project/packages/domain/package.json` and call the tool again.
@@ -55,8 +53,8 @@ should return `pass`. To see a finding, add
 ## Use it with your project
 
 Copy [the example .architecture directory](examples/layered-project/.architecture/)
-into your project, adapt its manifest and rules, and point `--root` at your
-checkout. Or implement the same [JSON protocol](docs/protocol.md) with your own
+into your project, adapt its manifest and rules, and pass your checkout as
+`project_path`. Or implement the same [JSON protocol](docs/protocol.md) with your own
 checker. Only run the server against projects whose checker code you trust: it
 executes `.architecture/cli.cjs` with your local permissions.
 
@@ -70,11 +68,22 @@ This leaves the overall status and check statuses unchanged:
 
 ```json
 {
+  "project_path": "/absolute/path/to/project",
   "report_filter": [
     { "path": "packages/domain/package.json", "lines": [[1, 10]] }
   ]
 }
 ```
+
+### Optional access scope
+
+- `--allow-root /absolute/path` restricts checks to that directory and its descendants. Repeat it for several directories.
+- `--project-manifest /path/to/projects.json` restricts checks to the exact directories in `{"projects":[{"path":"/absolute/path/to/project"}]}`.
+- `--project-path-env VARIABLE` restricts checks to the exact directory in that variable when it is set. All configured restrictions apply together.
+
+For meta-agent, add one custom stdio entry per space and pass `--project-manifest` with that space's `space.json` path and `--project-path-env PROJECT_PATH`. The same `project_path` tool argument applies to every client.
+
+### Direct invocation
 
 The project checker itself can also run directly. From the example project root:
 

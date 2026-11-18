@@ -1,4 +1,3 @@
-const fs = require('node:fs');
 const { parseArgs } = require('node:util');
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const {
@@ -11,15 +10,25 @@ const {
 const { version } = require('../package.json');
 const { runArchitectureCheck } = require('./runner');
 const { reportFilterSchema } = require('./report-filter');
+const { createProjectResolver } = require('./project-scope');
 
 const tool = {
   name: 'architecture_check',
   description:
-    'Run the configured project’s .architecture/cli.cjs and return its architecture report. The entire working tree is checked, including uncommitted files. A pass applies to the project’s declared checks.',
+    'Run .architecture/cli.cjs in the specified local project and return its architecture report. Rules run against the current working tree, including uncommitted files. A pass applies to the project’s declared checks.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
-    properties: { report_filter: reportFilterSchema },
+    properties: {
+      project_path: {
+        type: 'string',
+        minLength: 1,
+        description:
+          'Absolute path to the project directory on the MCP server host.',
+      },
+      report_filter: reportFilterSchema,
+    },
+    required: ['project_path'],
   },
 };
 
@@ -27,7 +36,7 @@ function toolError(message) {
   return { isError: true, content: [{ type: 'text', text: message }] };
 }
 
-function createServer(root) {
+function createServer(resolveProject) {
   const server = new Server(
     { name: 'architecture-check-mcp', version },
     { capabilities: { tools: {} } },
@@ -40,14 +49,23 @@ function createServer(root) {
   server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     if (params.name !== tool.name) return toolError('Unknown tool');
     const args = params.arguments ?? {};
-    if (Object.keys(args).some((key) => key !== 'report_filter')) {
-      return toolError(
-        'Only report_filter is supported. Set the project with --root at server startup.',
-      );
+    if (
+      Object.keys(args).some(
+        (key) => !Object.hasOwn(tool.inputSchema.properties, key),
+      )
+    ) {
+      return toolError('Only project_path and report_filter are supported');
+    }
+
+    let project;
+    try {
+      project = resolveProject(args.project_path);
+    } catch (error) {
+      return toolError(error.message);
     }
 
     try {
-      const report = await runArchitectureCheck(root, {
+      const report = await runArchitectureCheck(project, {
         reportFilter: args.report_filter,
       });
       return {
@@ -64,13 +82,27 @@ function createServer(root) {
 }
 
 async function main() {
-  const { values } = parseArgs({ options: { root: { type: 'string' } } });
-  if (!values.root?.trim())
-    throw new Error('Usage: node src/mcp-server.js --root /path/to/project');
-  const root = fs.realpathSync(values.root);
-  if (!fs.statSync(root).isDirectory())
-    throw new Error('--root must be a project directory');
-  await createServer(root).connect(new StdioServerTransport());
+  const { values } = parseArgs({
+    options: {
+      'allow-root': { type: 'string', multiple: true, default: [] },
+      'project-manifest': { type: 'string' },
+      'project-path-env': { type: 'string' },
+    },
+  });
+  const projectEnv = values['project-path-env'];
+  if (
+    projectEnv !== undefined &&
+    !/^[A-Za-z_][A-Za-z0-9_]*$/.test(projectEnv)
+  ) {
+    throw new Error('--project-path-env must be an environment variable name');
+  }
+  const resolveProject = createProjectResolver({
+    roots: values['allow-root'],
+    manifest: values['project-manifest'],
+    boundProject:
+      projectEnv === undefined ? undefined : process.env[projectEnv],
+  });
+  await createServer(resolveProject).connect(new StdioServerTransport());
 }
 
 if (require.main === module) {
