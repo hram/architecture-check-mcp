@@ -1,5 +1,7 @@
 # Architecture Check MCP
 
+English · [Русский](README.ru.md)
+
 A local stdio MCP server that runs the architecture rules defined by your
 project. It works with MCP clients such as Codex and Claude and requires Node.js
 22 or newer. Each project owns its rules and can use its preferred analysis
