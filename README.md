@@ -2,12 +2,66 @@
 
 English · [Русский](README.ru.md)
 
-A local stdio MCP server that runs the architecture rules defined by your
-project. It works with MCP clients such as Codex and Claude and requires Node.js
-22 or newer. Each project owns its rules and can use its preferred analysis
-libraries or build tools.
+**Give your coding agent a way to verify architectural rules before review.**
+A build can pass even after a domain package starts depending on infrastructure.
+If your project forbids that dependency, Codex or Claude can run the check,
+get the exact file, line, and reason, then fix the change and run the check again.
+
+Your team keeps executable rules next to the code in `.architecture/`. The
+server runs those rules against the current working tree, including uncommitted
+changes, and returns a structured report. Projects without a checker return
+`incomplete`. Your repository defines the checks and what they cover.
+
+## Available tool
+
+`architecture_check` runs all declared checks for the project you select.
+Pass `project_path`, an absolute directory path on the host running the MCP
+server. The same server can check a different project on the next call.
+
+The report includes:
+
+- `status`: `pass` when the declared checks pass, `fail` when they report
+  error-level violations, or `incomplete` when the checks could not be completed or verified.
+- `checks`: the individual checks and the files they covered.
+- `findings`: rule ID, file, line, severity, explanation, and evidence for each
+  finding.
+- `diagnostics`: reasons why a check could not be completed.
+
+Adding the forbidden dependency to the example project produces this excerpt
+from the report:
+
+```json
+{
+  "status": "fail",
+  "findings": [
+    {
+      "rule_id": "layers/domain-independence",
+      "file": "packages/domain/package.json",
+      "line": 4,
+      "severity": "error",
+      "message": "The domain package must not depend on infrastructure",
+      "evidence": "dependencies.@example/infrastructure"
+    }
+  ]
+}
+```
+
+Use the optional `report_filter` to see findings for selected files or lines
+during review. The checker still runs all declared checks, and the project
+status still reflects the full result.
+
+```json
+{
+  "project_path": "/absolute/path/to/project",
+  "report_filter": [
+    { "path": "packages/domain/package.json", "lines": [[1, 10]] }
+  ]
+}
+```
 
 ## Quick start
+
+You'll need Node.js 22 or newer and an MCP client that supports stdio.
 
 ```sh
 git clone https://github.com/hram/architecture-check-mcp.git
@@ -45,8 +99,7 @@ Restart the MCP client and call `architecture_check`:
 {"project_path":"/path/to/architecture-check-mcp/examples/layered-project"}
 ```
 
-The same server can check another project on the next call. The example
-should return `pass`. To see a finding, add
+The example should return `pass`. To reproduce the finding above, add
 `"dependencies": { "@example/infrastructure": "*" }` to
 `examples/layered-project/packages/domain/package.json` and call the tool again.
 
@@ -58,22 +111,11 @@ into your project, adapt its manifest and rules, and pass your checkout as
 checker. Only run the server against projects whose checker code you trust: it
 executes `.architecture/cli.cjs` with your local permissions.
 
-The checker runs against the working tree, including uncommitted files.
-Each rule reports what it covered. The example checks
-the domain package's declared dependencies; it does not inspect JavaScript
-imports or transitive dependencies.
-
-You can optionally narrow the returned findings to selected files or lines.
-This leaves the overall status and check statuses unchanged:
-
-```json
-{
-  "project_path": "/absolute/path/to/project",
-  "report_filter": [
-    { "path": "packages/domain/package.json", "lines": [[1, 10]] }
-  ]
-}
-```
+Start with one rule your team already looks for in code review. The example
+checks the domain package's declared dependencies. Checking imports or
+transitive dependencies requires a separate analyzer. In your agent's project
+instructions, you can ask it to run `architecture_check` before finishing a
+change and report the final status and any findings.
 
 ### Optional access scope
 
