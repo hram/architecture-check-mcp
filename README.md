@@ -2,15 +2,29 @@
 
 English · [Русский](README.ru.md)
 
-**Give your coding agent a way to verify architectural rules before review.**
-A build can pass even after a domain package starts depending on infrastructure.
-If your project forbids that dependency, Codex or Claude can run the check,
-get the exact file, line, and reason, then fix the change and run the check again.
+**Turn architecture review findings into checks your coding agent can run.**
+Project instructions and skills give the agent context. Builds, linters, static
+analyzers, and tests verify what they already cover. They can all pass while
+a change breaks a convention specific to your project. For example, a domain
+package can acquire a dependency on infrastructure.
 
-Your team keeps executable rules next to the code in `.architecture/`. The
-server runs those rules against the current working tree, including uncommitted
-changes, and returns a structured report. Projects without a checker return
-`incomplete`. Your repository defines the checks and what they cover.
+Your team records the convention as an executable rule alongside the code in
+`.architecture/`. Codex, Claude, or any stdio MCP client can call
+`architecture_check` against the current working tree, including uncommitted
+changes, and get a report with the file, line, and reason for each violation.
+
+## How a review finding becomes a check
+
+1. During development or review, identify the architectural mistake and state
+   the project rule it violates.
+2. Add an executable check to `.architecture/`. Run `architecture_check`
+   on the original change and confirm that the new rule returns `fail` for the
+   violation you found.
+3. The agent reads the report, fixes the code, and runs the tool again. A
+   `pass` confirms the declared rules passed within their reported coverage.
+   If the result is `incomplete`, inspect the diagnostics for unfinished checks.
+4. Keep the rule in the repository so the agent can catch the same mistake
+   before the next review.
 
 ## Available tool
 
@@ -111,11 +125,15 @@ into your project, adapt its manifest and rules, and pass your checkout as
 checker. Only run the server against projects whose checker code you trust: it
 executes `.architecture/cli.cjs` with your local permissions.
 
-Start with one rule your team already looks for in code review. The example
-checks the domain package's declared dependencies. Checking imports or
-transitive dependencies requires a separate analyzer. In your agent's project
-instructions, you can ask it to run `architecture_check` before finishing a
-change and report the final status and any findings.
+The example checks the domain package's declared dependencies. Checking imports
+or transitive dependencies requires an analyzer that covers them. Your project
+checker can reuse the analysis tools you already have.
+
+For example, add this to your agent's project instructions:
+
+> Before finishing a change, run `architecture_check` on the current project.
+> After fixing any findings, run it again. Report the final status and any
+> remaining violations or checks that could not be completed.
 
 ### Optional access scope
 
